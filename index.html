@@ -976,10 +976,8 @@ struct Vehicle {
   void accelerate();
 };
 
-struct any_vehicle { /* see later */ };
-
 int main() {
-  std::vector<any_vehicle> vehicles;
+  std::vector<std::poly<Vehicle>> vehicles;
   vehicles.push_back(Car{...});
   vehicles.push_back(Truck{...});
   vehicles.push_back(lib::Motorcycle{...});
@@ -992,76 +990,14 @@ int main() {
 
 ----
 
-### Figure out the vtable layout
-
-```c++
-constexpr std::meta::type vtable_layout(std::meta::type interface) {
-  auto vtable = reflexpr(struct { });
-  for (auto method : interface.methods()) {
-    // signature of the method, with void* as first argument
-    auto signature = method.signature()
-                           .insert_argument(0, reflexpr(void*));
-    vtable.add_public_member(method.name(), method.add_ptr());
-  }
-  return vtable;
-}
-
-template <typename Interface>
-using vtable_layout_t = typename(vtable_layout(reflexpr(Interface)));
-```
-
-----
-
-### Fill the vtable
-
-```c++
-constexpr vtable_layout_t<Interface>
-fill_vtable(std::meta::type interface, std::meta::type model) {
-  vtable_layout_t<Interface> vtable;
-  for constexpr (auto method : interface) {
-    vtable. idexpr(method.name()) = unreflexpr(method.address());
-  }
-  return vtable;
-}
-
-template <typename Interface, typename Model>
-static constexpr vtable_layout_t<Interface> vtable_for =
-                fill_vtable(reflexpr(Interface), reflexpr(Model));
-```
-
-----
-
-### Generate the type-erased wrapper
-
-```c++
-class any_vehicle {
-  using VTable = vtable_layout_t<Vehicle>;
-  VTable* vtable_;
-  void* storage_;
-
-public:
-  template <typename V>
-  any_vehicle(V v)
-    : vtable_{&vtable_for<Vehicle, V>}
-    , storage_{new V{v}}
-  { }
-
-  void accelerate() {
-    vtable_->accelerate(storage_);
-  }
-};
-```
-
-----
-
 ### Or with metaclasses? ([p0707r3](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0707r3.pdf))
 
 ```c++
-constexpr std::meta::type interface(std::meta::type input) {
+constexpr void interface(std::meta::type target, std::meta::type const source)
   // generates the type-erasure wrapper
 }
 
-class<interface> Vehicle {
+class<interface> Vehicle { // one of the proposed syntaxes in p0707r3
   void accelerate();
 };
 
@@ -1088,7 +1024,7 @@ concept Vehicle = requires {
 }
 
 int main() {
-  std::vector<any Vehicle> vehicles;
+  std::vector<any Vehicle> vehicles; // imaginary syntax
   vehicles.push_back(Car{...});
   vehicles.push_back(Truck{...});
   vehicles.push_back(lib::Motorcycle{...});
@@ -1101,7 +1037,7 @@ int main() {
 
 ----
 
-### Library customization points
+### Library customization points?
 
 ```c++
 template <>
@@ -1113,6 +1049,276 @@ struct std::interface_traits<Vehicle> {
 
 Note:
 Kind of like coroutines -- a language feature backed by library customization points
+
+----
+
+### Or a customizable library type?
+(current strawman based on discussions so far)
+
+```c++
+template <typename V>
+concept Vehicle = requires {
+  void V::accelerate(); // imaginary syntax
+}
+
+int main() {
+  std::vector<std::poly<Vehicle, std::local_storage<16>>> vehicles;
+  vehicles.push_back(Car{...});
+  vehicles.push_back(Truck{...});
+  vehicles.push_back(lib::Motorcycle{...});
+
+  for (auto& vehicle : vehicles) {
+    vehicle.accelerate();
+  }
+}
+```
+
+====
+
+### How do we get there?
+
+----
+
+<ol start="1"><li>Allow passing concepts as template parameters</li></ol>
+
+```c++
+template <template <typename> concept Interface>
+class std::poly { ... };
+```
+
+----
+
+<ol start="2"><li>Add support for declaration constraints in concepts</li></ol>
+
+```c++
+template <typename V>
+concept Vehicle = requires {
+  void V::accelerate();
+  // actual declaration, not just a valid expression
+}
+```
+
+----
+
+Declaration constraints are easy to create a vtable from. Given:
+
+```c++
+template <typename V>
+concept Vehicle = requires {
+  void V::accelerate();
+}
+```
+
+The vtable should look like this:
+
+```c++
+struct __Vehicle_vtable {
+  void (*accelerate)(void*);
+  //                 ^^^^^ the implicit this parameter
+};
+```
+
+----
+
+<ol start="3"><li>Support reflection on concepts</li></ol>
+
+```c++
+template <typename V>
+concept Vehicle = requires {
+  void V::accelerate();
+}
+
+constexpr std::meta::type vehicle = reflexpr(Vehicle);
+vehicle.constraints(); // vector of constraints
+vehicle.constraints[0].is_declaration(); // etc...
+vehicle.declaration_constraints(); // declaration constraints only
+```
+
+----
+
+<ol start="4"><li>Add support for code generation</li></ol>
+(already planned for p0707r3)
+
+```c++
+constexpr void overload(std::meta::type target,
+                        std::meta::type source)
+{
+  // for each source function
+  for (auto f : source.functions()) {
+    // first echo the function into target
+    ->(target) f;
+    // and then create a no-op overload with an extra `int` parameter
+    ->(target) {
+      void idexpr(f.name()) (idexpr(f.parameters()), int) { }
+    };
+  }
+};
+```
+
+----
+
+Given this class:
+
+```c++
+struct Foo {
+  void f(char);
+  void g(std::string);
+};
+```
+
+It would generate this class:
+
+```c++
+struct Foo {
+  void f(char);
+  void f(char, int);
+  void g(std::string);
+  void g(std::string, int);
+};
+```
+
+----
+
+<ol start="5"><li>Add `std::poly`</li></ol>
+
+```c++
+template <template <typename> concept Interface,
+          typename StoragePolicy,
+          typename VTablePolicy>
+class std::poly {
+  __some_magic_vtable_type vtable_;
+  __some_magic_storage_type storage_;
+
+public:
+  template <Interface T>
+  poly(T value)
+    : vtable_{__some_magic_vtable_for<Interface, T>}
+    , storage_{value}
+  { }
+
+  // For each method declaration in the Interface, a corresponding
+  // method here that goes through the vtable.
+};
+```
+
+====
+
+### How is `std::poly` implemented?
+
+----
+
+### (meta-) programatically!
+
+```c++
+template <template <typename> concept Interface,
+          typename StoragePolicy,
+          typename VTablePolicy>
+using poly = typename(
+  make_poly<Interface, StoragePolicy, VTablePolicy>()
+);
+```
+
+----
+
+### With syntax derived from [p0707r3](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0707r3.pdf)
+
+```c++
+template <template <typename> concept Interface,
+          typename StoragePolicy,
+          typename VTablePolicy>
+constexpr std::meta::type make_poly() {
+  auto target = reflexpr(class {}); // the std::poly we're generating
+  ->(target) {
+  private:
+    __vtable_type<Interface, VTablePolicy> vtable_;
+    __storage_type<StoragePolicy> storage_;
+
+  public:
+    template <Interface T>
+    poly(T value)
+      : vtable_{__vtable_for<Interface, T>}
+      , storage_{value}
+    { }
+  }
+  // ...
+  return target;
+}
+```
+
+----
+
+### Continued
+
+```c++
+template <template <typename> concept Interface,
+          typename StoragePolicy,
+          typename VTablePolicy>
+constexpr std::meta::type make_poly() {
+  auto target = reflexpr(class {}); // the std::poly we're generating
+  // ...
+  for (auto method : reflexpr(Interface).declaration_constraints()) {
+    ->(target) {
+    public:
+      typename(method.result())              // return type
+      idexpr(method.name())                  // name of the method
+      (typename(method.arguments())... args) // argument list
+      {
+        return vtable_.idexpr(method.name())
+                                    (storage_.get(), args...);
+      }
+    }
+  }
+  return target;
+}
+```
+
+----
+
+### Making the vtable type
+
+```c++
+template <template <typename> concept Interface,
+          typename VTablePolicy>
+using __vtable_type = typename([] {
+  // In reality, this would depend on the vtable policy provided
+  auto target = reflexpr(struct {});
+  for (auto method : interface.declaration_constraints()) {
+    // signature of the method, with void* as first argument
+    auto signature = method.signature()
+                           .insert_argument(0, reflexpr(void*));
+    ->(target) {
+      typename(signature.add_ptr()) idexpr(method.name());
+    }
+  }
+  return target;
+}());
+```
+
+----
+
+### Filling the vtable
+
+```c++
+template <template <typename> concept Interface,
+          typename VTablePolicy,
+          typename T>
+static constexpr auto __vtable_for = [] {
+  __vtable_type<Interface, VTablePolicy> vtable;
+  for (auto method : reflexpr(Interface).declaration_constraints()) {
+    auto thunk = [](void*this_, typename(method.arguments())... args)
+    {
+      return static_cast<T*>(this_)->idexpr(method.name())(args...);
+    };
+    vtable.idexpr(method.name()) = thunk;
+  }
+  return vtable;
+}();
+```
+
+----
+
+### It's a bit of a long shot
+But most changes are incremental and useful in isolation
 
 ====
 
@@ -1132,8 +1338,7 @@ Kind of like coroutines -- a language feature backed by library customization po
   + As always, space/time tradeoff
 - Vtables can be inlined (measure!)
 - Type erasure is tedious to do manually
-  + Reflection will be there to help
-  + Or maybe a custom language feature
+  + Reflection and code generation to the rescue!
 
 ====
 
