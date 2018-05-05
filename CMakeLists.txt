@@ -1,4 +1,4 @@
-# Copyright Louis Dionne 2017
+# Copyright Louis Dionne 2018
 # Distributed under the Boost Software License, Version 1.0.
 
 cmake_minimum_required(VERSION 3.8)
