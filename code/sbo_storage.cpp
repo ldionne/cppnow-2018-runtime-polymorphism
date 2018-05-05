@@ -19,7 +19,7 @@ struct Vehicle {
 
   template <typename Any>
   Vehicle(Any vehicle) : vptr_{&vtable_for<Any>} {
-    if (sizeof(Any) > 16) {
+    if constexpr (sizeof(Any) > 16) {
       on_heap_ = true;
       ptr_ = new Any(vehicle);
     } else {
