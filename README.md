@@ -1,11 +1,11 @@
-## Runtime Polymorphism: Back to the Basics @ ACCU 2018
+## Runtime Polymorphism: Back to the Basics @ C++Now 2018
 
 This repository contains my [reveal.js][]-based presentation on runtime
-polymorphism for [ACCU 2018][]. It is also related to the [Dyno][]
+polymorphism for [C++Now 2018][]. It is also related to the [Dyno][]
 library, which implements the ideas explored in the presentation.
 
 ## Usage
-Go to https://ldionne.com/accu-2018-runtime-polymorphism or open `index.html`
+Go to https://ldionne.com/cppnow-2018-runtime-polymorphism or open `index.html`
 with your browser. A PDF version of the slides is in `slides.pdf`.
 
 ## Building the code samples
@@ -28,6 +28,6 @@ grunt serve --root=..
 Then visit http://localhost:8000.
 
 <!-- Links -->
-[ACCU 2018]: https://accu.org/index.php/conferences/accu_conference_2018
+[C++Now 2018]: http://cppnow.org/history/2018
 [reveal.js]: https://github.com/hakimel/reveal.js
 [Dyno]: https://github.com/ldionne/dyno
