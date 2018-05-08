@@ -9,6 +9,7 @@
 
     <link rel="stylesheet" href="reveal/css/reveal.css">
     <link rel="stylesheet" href="reveal/css/theme/black.css">
+    <link rel="stylesheet" href="plugin/line-numbers.css">
     <link rel="stylesheet" href="custom.css">
 
     <!-- Theme used for syntax highlighting of code -->
@@ -993,7 +994,9 @@ int main() {
 ### Or with metaclasses? ([p0707r3](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0707r3.pdf))
 
 ```c++
-constexpr void interface(std::meta::type target, std::meta::type const source)
+constexpr void interface(std::meta::type target,
+                         std::meta::type const source)
+{
   // generates the type-erasure wrapper
 }
 
@@ -1408,7 +1411,8 @@ https://ldionne.com
           { src: 'reveal/plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
           { src: 'plugin/Chart.min.js' },
           { src: 'plugin/csv2chart.js' },
-          { src: 'plugin/sampler.js' }
+          { src: 'plugin/sampler.js' },
+          { src: 'plugin/line-numbers.js'}
         ]
       });
 
@@ -1418,6 +1422,14 @@ https://ldionne.com
       Reveal.addEventListener('ready', function(event) {
         $(".slide-hidden").each(function(index, slide) {
           slide.remove();
+        });
+      });
+
+      // Add the line-numbers class to all code blocks, so that code examples
+      // have line numbers.
+      Reveal.addEventListener('ready', function(event) {
+        $("pre>code").each(function(index, block) {
+          block.classList.add("line-numbers");
         });
       });
 
